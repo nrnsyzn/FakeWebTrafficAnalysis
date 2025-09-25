@@ -1,23 +1,133 @@
-# FakeWebTrafficAnalysis
-This project demonstrates how to use WireShark to capture network traffic and how to make use of the information to give a good input
+Incident Report – Fake Web Traffic Analysis
+1. Executive Summary
 
-WHAT DOES LAN SEGMENT DETAILS FROM THE PCAP MEANS?
-LAN segment range:  10.1.17[.]0/24   (10.1.17[.]0 through 10.1.17[.]255)
-It shows the scope of local traffic, which means we can differentiate the internal and external communication by filtering traffic by subnet in Wireshark (ip.addr == 10.1.17.0/24) to analyze only the internal communications
-Domain:  bluemoontuesday[.]com
-Active Directory (AD) domain controller:  10.1.17[.]2 - WIN-GSH54QLW48D
-AD environment name:  BLUEMOONTUESDAY
-AD/DC traffic (like Kerberos, LDAP, SMB) usually means authentication or file-sharing activity. thus, if there is suspicious logins, brute-force attempts or unusual SMB traffic within this domain controller, it needs to be highlighted
-LAN segment gateway:  10.1.17[.]1
-Gateway means the exit point to other networks or internet. so, it is useful to track what traffic is leaving the LAN
-LAN segment broadcast address:  10.1.17[.]255
-It looks for broadcast protocols like ARP, NetBIOS, DHCP, which can help in network reconnaissance or host discovery. If there is ARP Spoofing or lots of broadcast traffic, it can be documented as intrusion detection demo
-What is the IP address of the infected Windows client?
-What is the mac address of the infected Windows client?
-What is the host name of the infected Windows client?
-What is the user account name from the infected Windows client?
-What is the likely domain name for the fake Google Authenticator page?
-What are the IP addresses used for C2 servers for this infection?
+This investigation analyzed a PCAP capture to identify signs of compromise within the LAN segment 10.1.17.0/24. Using Wireshark, we isolated the infected client, confirmed its host identity and user account, and traced malicious traffic to a fake Google Authenticator phishing domain and several external command-and-control (C2) servers. Evidence suggests credential theft followed by persistent external communications with attacker-controlled infrastructure.
+
+2. Environment Overview
+
+LAN Segment Details (from PCAP):
+
+LAN range: 10.1.17.0/24 (10.1.17.0 – 10.1.17.255)
+
+Gateway: 10.1.17.1 (exit point to internet)
+
+Broadcast: 10.1.17.255 (host discovery / reconnaissance traffic)
+
+Domain: bluemoontuesday[.]com
+
+Active Directory DC: 10.1.17.2 (WIN-GSH54QLW48D)
+
+AD Environment Name: BLUEMOONTUESDAY
+
+These details establish which hosts are internal vs. external and highlight the AD domain controller that authenticates users.
+
+3. Findings
+3.1 Infected Windows Client
+
+IP Address: 10.1.17.215
+
+MAC Address: 00:d0:b7:26:4a:74
+
+Host Name: DESKTOP-L8CGS5J (via NBNS registration)
+
+Domain Membership: BLUEMOONTUESDAY
+
+User Account: shutchenson (from Kerberos authentication exchange)
+
+3.2 Malicious Domain (Phishing Page)
+
+Domain Queried: authenticatoor.org
+
+Description: Fake Google Authenticator phishing site (typosquatting “authenticator”)
+
+Resolution: Resolved to 82.221.136.26 during DNS query
+
+Purpose: Likely initial credential harvesting before redirection to true C2 infrastructure
+
+3.3 Command-and-Control (C2) Servers
+
+Analysis of external connections from 10.1.17.215 revealed sustained high-volume traffic with the following IPs:
+
+IP Address	Packets	Bytes	Notes
+45.125.66.32	10,940	10 MB	Long-lived C2 connection
+5.252.153.241	9,076	7 MB	Persistent data exchange
+45.125.66.252	1,369	107 KB	Secondary C2 channel
+82.221.136.26	2,470	2 MB	Tied to phishing domain (authenticatoor.org), likely staging server
+
+Observation:
+While 82.221.136.26 is linked to the phishing domain, the true sustained C2 channels are the three IPs (45.125.66.32, 5.252.153.241, 45.125.66.252). These exhibit prolonged encrypted sessions, characteristic of malware beaconing and exfiltration.
+
+4. Attack Flow (Reconstruction)
+
+User shutchenson on DESKTOP-L8CGS5J (10.1.17.215) browses to fake domain authenticatoor.org.
+
+DNS resolves this domain to 82.221.136.26.
+
+Client establishes TLS connection to 82.221.136.26, presenting SNI = authenticatoor.org.
+
+After initial interaction, malware establishes longer-lived sessions with C2 IPs (45.125.66.32, 5.252.153.241, 45.125.66.252).
+
+Persistent encrypted traffic suggests ongoing attacker control and possible data exfiltration.
+
+5. Indicators of Compromise (IOCs)
+
+Host-based IOCs
+
+Hostname: DESKTOP-L8CGS5J
+
+User: shutchenson
+
+MAC: 00:d0:b7:26:4a:74
+
+IP: 10.1.17.215
+
+Network IOCs
+
+Phishing Domain: authenticatoor.org
+
+Phishing IP: 82.221.136.26
+
+C2 Servers:
+
+45.125.66.32
+
+5.252.153.241
+
+45.125.66.252
+
+6. Recommendations
+
+Immediate Containment
+
+Quarantine infected host (10.1.17.215) from the network.
+
+Block outbound traffic to malicious IPs/domains at firewall/proxy.
+
+Credential Security
+
+Reset credentials for user shutchenson.
+
+Audit AD logs for suspicious login activity.
+
+Network Defense
+
+Deploy IDS/IPS signatures for identified IOCs.
+
+Monitor for beaconing patterns on similar hosts.
+
+User Awareness
+
+Train users on phishing detection, especially lookalike domains (authenticatoor.org).
+
+Forensic Follow-up
+
+Perform disk/host forensic analysis of DESKTOP-L8CGS5J to identify malware family and persistence mechanisms.
+
+Collect memory dump to extract possible decrypted C2 instructions.
+
+7. Conclusion
+
+The PCAP analysis confirms a compromise of host 10.1.17.215 (DESKTOP-L8CGS5J) belonging to user shutchenson. The infection originated via a phishing domain (authenticatoor.org) and transitioned into persistent communication with multiple external C2 servers. Prompt containment and credential hygiene are critical to mitigate further compromise.
 
 <img width="1470" height="956" alt="image" src="https://github.com/user-attachments/assets/57c8e587-710c-40e2-8938-6621c9a0a556" />
 This is me trying to filter infected client
@@ -47,6 +157,11 @@ The infected Windows client was DESKTOP-L8CGS5J (10.1.17.215 / 00:d0:b7:26:4a:74
 <img width="1470" height="956" alt="image" src="https://github.com/user-attachments/assets/95126db7-73ac-449d-a25b-229bcde3f13c" />
 kRB5-NT-PRINCIPAL (1)
 name : shutchenson
+<img width="1470" height="768" alt="image" src="https://github.com/user-attachments/assets/10fb27d5-9692-42d7-9e60-9a288bf93ee7" />
+
+<img width="1470" height="956" alt="image" src="https://github.com/user-attachments/assets/e5517863-f95a-4637-b1a9-4e3b3582eef8" />
+
+
 
 
 
