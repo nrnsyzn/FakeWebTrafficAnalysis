@@ -111,7 +111,7 @@ While `82.221.136.26` is directly linked to the phishing domain, the three IPs (
 
 ### Network Defense
 
-* Deploy IDS/IPS signatures for identified IOCs.
+* Deploy Intrusion Detection System (IDS) and Intrusion Prevention System (IPS) signatures for the identified Indicators of Compromise (IOCs).
 * Monitor for beaconing patterns on other hosts.
 
 ### User Awareness
