@@ -33,6 +33,11 @@ Host Name: DESKTOP-L8CGS5J (via NBNS registration)
 Domain Membership: BLUEMOONTUESDAY
 
 User Account: shutchenson (from Kerberos authentication exchange)
+<img width="1230" height="874" alt="image" src="https://github.com/user-attachments/assets/7ac0515b-835d-40c5-98b7-d455243ba629" />
+Picture shows statistics -> conversation -> ipv4
+The domain that sends the most packets is 10.1.17.215, so we can suspect it as the infected client
+Then, we want to check the MAC address
+
 
 3.2 Malicious Domain (Phishing Page)
 
@@ -129,8 +134,7 @@ Collect memory dump to extract possible decrypted C2 instructions.
 
 The PCAP analysis confirms a compromise of host 10.1.17.215 (DESKTOP-L8CGS5J) belonging to user shutchenson. The infection originated via a phishing domain (authenticatoor.org) and transitioned into persistent communication with multiple external C2 servers. Prompt containment and credential hygiene are critical to mitigate further compromise.
 
-<img width="1470" height="956" alt="image" src="https://github.com/user-attachments/assets/57c8e587-710c-40e2-8938-6621c9a0a556" />
-This is me trying to filter infected client
+
 <img width="1470" height="956" alt="image" src="https://github.com/user-attachments/assets/753ef475-2101-470b-a33a-f0051c7f7e20" />
 statistics -> endpoint -> address
 
