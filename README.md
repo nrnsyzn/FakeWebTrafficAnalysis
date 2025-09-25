@@ -1,171 +1,133 @@
-Incident Report – Fake Web Traffic Analysis
-1. Executive Summary
+# Incident Report – Fake Web Traffic Analysis
 
-This investigation analyzed a PCAP capture to identify signs of compromise within the LAN segment 10.1.17.0/24. Using Wireshark, we isolated the infected client, confirmed its host identity and user account, and traced malicious traffic to a fake Google Authenticator phishing domain and several external command-and-control (C2) servers. Evidence suggests credential theft followed by persistent external communications with attacker-controlled infrastructure.
+---
 
-2. Environment Overview
+## 1. Executive Summary
 
-LAN Segment Details (from PCAP):
+This investigation analyzed a PCAP capture to identify signs of compromise within the LAN segment **10.1.17.0/24**. Using Wireshark, the infected client was isolated, its host identity and user account were confirmed, and malicious traffic was traced to a fake Google Authenticator phishing domain along with several external command-and-control (C2) servers. Evidence suggests credential theft followed by persistent external communications with attacker-controlled infrastructure.
 
-LAN range: 10.1.17.0/24 (10.1.17.0 – 10.1.17.255)
+---
 
-Gateway: 10.1.17.1 (exit point to internet)
+## 2. Environment Overview
 
-Broadcast: 10.1.17.255 (host discovery / reconnaissance traffic)
+**LAN Segment Details (from PCAP):**
 
-Domain: bluemoontuesday[.]com
-
-Active Directory DC: 10.1.17.2 (WIN-GSH54QLW48D)
-
-AD Environment Name: BLUEMOONTUESDAY
+* **LAN range:** 10.1.17.0/24 (10.1.17.0 – 10.1.17.255)
+* **Gateway:** 10.1.17.1 (exit point to the internet)
+* **Broadcast:** 10.1.17.255 (host discovery / reconnaissance traffic)
+* **Domain:** bluemoontuesday[.]com
+* **Active Directory DC:** 10.1.17.2 (WIN-GSH54QLW48D)
+* **AD Environment Name:** BLUEMOONTUESDAY
 
 These details establish which hosts are internal vs. external and highlight the AD domain controller that authenticates users.
 
-3. Findings
-3.1 Infected Windows Client
+---
 
-IP Address: 10.1.17.215
+## 3. Findings
 
-MAC Address: 00:d0:b7:26:4a:74
+### 3.1 Infected Windows Client
 
-Host Name: DESKTOP-L8CGS5J (via NBNS registration)
+* **IP Address:** 10.1.17.215
+* **MAC Address:** 00:d0:b7:26:4a:74
+* **Host Name:** DESKTOP-L8CGS5J (via NBNS registration)
+* **Windows User Account:** shutchenson (from Kerberos authentication exchange)
 
-Domain Membership: BLUEMOONTUESDAY
+**Evidence:**
 
-User Account: shutchenson (from Kerberos authentication exchange)
-<img width="1230" height="874" alt="image" src="https://github.com/user-attachments/assets/7ac0515b-835d-40c5-98b7-d455243ba629" />
-Picture shows statistics -> conversation -> ipv4
-The domain that sends the most packets is 10.1.17.215, so we can suspect it as the infected client
-Then, we want to check the MAC address
+* [IPv4 conversations showing 10.1.17.215 sending the most packets](https://github.com/user-attachments/assets/7ac0515b-835d-40c5-98b7-d455243ba629)
+* [Ethernet endpoint statistics confirming MAC 00:d0:b7:26:4a:74](https://github.com/user-attachments/assets/90442115-7d6a-4805-8bed-a2abad9463d9)
+* [NBNS traffic showing host name DESKTOP-L8CGS5J and AD environment BLUEMOONTUESDAY](https://github.com/user-attachments/assets/63a7aea8-f417-476d-a1fe-cdbffde39920)
+* [Kerberos packet revealing username shutchenson](https://github.com/user-attachments/assets/587d4251-e3e8-4d5f-88c5-5c00cafe3e14)
 
+---
 
-3.2 Malicious Domain (Phishing Page)
+### 3.2 Malicious Domain (Phishing Page)
 
-Domain Queried: authenticatoor.org
+* **Domain Queried:** authenticatoor.org
+* **Description:** Fake Google Authenticator phishing site (typosquatting “authenticator”)
+* **Resolution:** Resolved to **82.221.136.26** during DNS query
+* **Purpose:** Likely used for initial credential harvesting before redirecting to true C2 infrastructure
 
-Description: Fake Google Authenticator phishing site (typosquatting “authenticator”)
+---
 
-Resolution: Resolved to 82.221.136.26 during DNS query
-
-Purpose: Likely initial credential harvesting before redirection to true C2 infrastructure
-
-3.3 Command-and-Control (C2) Servers
+### 3.3 Command-and-Control (C2) Servers
 
 Analysis of external connections from 10.1.17.215 revealed sustained high-volume traffic with the following IPs:
 
-IP Address	Packets	Bytes	Notes
-45.125.66.32	10,940	10 MB	Long-lived C2 connection
-5.252.153.241	9,076	7 MB	Persistent data exchange
-45.125.66.252	1,369	107 KB	Secondary C2 channel
-82.221.136.26	2,470	2 MB	Tied to phishing domain (authenticatoor.org), likely staging server
+| IP Address    | Packets | Bytes  | Notes                                                             |
+| ------------- | ------- | ------ | ----------------------------------------------------------------- |
+| 45.125.66.32  | 10,940  | 10 MB  | Long-lived C2 connection                                          |
+| 5.252.153.241 | 9,076   | 7 MB   | Persistent data exchange                                          |
+| 45.125.66.252 | 1,369   | 107 KB | Secondary C2 channel                                              |
+| 82.221.136.26 | 2,470   | 2 MB   | Tied to phishing domain authenticatoor.org; likely staging server |
 
-Observation:
-While 82.221.136.26 is linked to the phishing domain, the true sustained C2 channels are the three IPs (45.125.66.32, 5.252.153.241, 45.125.66.252). These exhibit prolonged encrypted sessions, characteristic of malware beaconing and exfiltration.
+**Observation:**
+While `82.221.136.26` is directly linked to the phishing domain, the three IPs (`45.125.66.32`, `5.252.153.241`, `45.125.66.252`) exhibit the most sustained encrypted sessions, characteristic of malware beaconing and exfiltration.
 
-4. Attack Flow (Reconstruction)
+---
 
-User shutchenson on DESKTOP-L8CGS5J (10.1.17.215) browses to fake domain authenticatoor.org.
+## 4. Attack Flow (Reconstruction)
 
-DNS resolves this domain to 82.221.136.26.
+1. User **shutchenson** on **DESKTOP-L8CGS5J (10.1.17.215)** browsed to the fake domain `authenticatoor.org`.
+2. DNS resolved the domain to **82.221.136.26**.
+3. The client established a TLS connection to 82.221.136.26, presenting **SNI = authenticatoor.org**.
+4. After the initial interaction, malware established longer-lived sessions with **C2 IPs 45.125.66.32, 5.252.153.241, and 45.125.66.252**.
+5. Persistent encrypted traffic suggests ongoing attacker control and potential data exfiltration.
 
-Client establishes TLS connection to 82.221.136.26, presenting SNI = authenticatoor.org.
+---
 
-After initial interaction, malware establishes longer-lived sessions with C2 IPs (45.125.66.32, 5.252.153.241, 45.125.66.252).
+## 5. Indicators of Compromise (IOCs)
 
-Persistent encrypted traffic suggests ongoing attacker control and possible data exfiltration.
+**Host-based IOCs:**
 
-5. Indicators of Compromise (IOCs)
+* Hostname: DESKTOP-L8CGS5J
+* User: shutchenson
+* MAC: 00:d0:b7:26:4a:74
+* IP: 10.1.17.215
 
-Host-based IOCs
+**Network IOCs:**
 
-Hostname: DESKTOP-L8CGS5J
+* Phishing Domain: authenticatoor.org
+* Phishing IP: 82.221.136.26
+* C2 Servers:
 
-User: shutchenson
+  * 45.125.66.32
+  * 5.252.153.241
+  * 45.125.66.252
 
-MAC: 00:d0:b7:26:4a:74
+---
 
-IP: 10.1.17.215
+## 6. Recommendations
 
-Network IOCs
+### Immediate Containment
 
-Phishing Domain: authenticatoor.org
+* Quarantine infected host (`10.1.17.215`) from the network.
+* Block outbound traffic to malicious IPs/domains at firewall and proxy.
 
-Phishing IP: 82.221.136.26
+### Credential Security
 
-C2 Servers:
+* Reset credentials for user **shutchenson**.
+* Audit Active Directory logs for suspicious login activity.
 
-45.125.66.32
+### Network Defense
 
-5.252.153.241
+* Deploy IDS/IPS signatures for identified IOCs.
+* Monitor for beaconing patterns on other hosts.
 
-45.125.66.252
+### User Awareness
 
-6. Recommendations
+* Conduct phishing-awareness training, focusing on lookalike domains such as `authenticatoor.org`.
 
-Immediate Containment
+### Forensic Follow-Up
 
-Quarantine infected host (10.1.17.215) from the network.
+* Perform disk and memory forensic analysis of DESKTOP-L8CGS5J.
+* Identify malware family and persistence mechanisms.
+* Collect memory dumps to extract possible decrypted C2 instructions.
 
-Block outbound traffic to malicious IPs/domains at firewall/proxy.
+---
 
-Credential Security
+## 7. Conclusion
 
-Reset credentials for user shutchenson.
+The PCAP analysis confirms a compromise of host **10.1.17.215 (DESKTOP-L8CGS5J)** belonging to user **shutchenson**. The infection originated via a phishing domain (`authenticatoor.org`) and transitioned into persistent communication with multiple external C2 servers. Prompt host isolation, credential resets, and network-level blocking are required to mitigate further compromise.
 
-Audit AD logs for suspicious login activity.
-
-Network Defense
-
-Deploy IDS/IPS signatures for identified IOCs.
-
-Monitor for beaconing patterns on similar hosts.
-
-User Awareness
-
-Train users on phishing detection, especially lookalike domains (authenticatoor.org).
-
-Forensic Follow-up
-
-Perform disk/host forensic analysis of DESKTOP-L8CGS5J to identify malware family and persistence mechanisms.
-
-Collect memory dump to extract possible decrypted C2 instructions.
-
-7. Conclusion
-
-The PCAP analysis confirms a compromise of host 10.1.17.215 (DESKTOP-L8CGS5J) belonging to user shutchenson. The infection originated via a phishing domain (authenticatoor.org) and transitioned into persistent communication with multiple external C2 servers. Prompt containment and credential hygiene are critical to mitigate further compromise.
-
-
-<img width="1470" height="956" alt="image" src="https://github.com/user-attachments/assets/753ef475-2101-470b-a33a-f0051c7f7e20" />
-statistics -> endpoint -> address
-
-looks like 10.1.17.215 is the infected client 
-check ethernet to see the MAC address
-looks like it is 00:d0:b7:26:4a:74
-<img width="1470" height="956" alt="image" src="https://github.com/user-attachments/assets/f55668cc-1f06-4025-b9c6-1ef42a68e1b1" />
-
-<img width="1470" height="956" alt="image" src="https://github.com/user-attachments/assets/05d93d0a-749f-4d32-9c7c-39e2b9a39394" />
-<img width="1470" height="956" alt="image" src="https://github.com/user-attachments/assets/2531b393-e720-479c-8d2e-d8d5308c5d4e" />
-NetBios Name Service (NBNS)
-Registration NB DESKTOP-L8CGS5J<00>
-
-This means infected client host 10.1.17.215 registered the NetBIOS name is DESKTOP-L8CGS5J.
-
-Registration NB BLUEMOONTUESDAY<00>
-
-This is the domain/workgroup name being announced.
-
-Registration response, Name is owned by another node NB 10.1.17.2
-
-The domain controller (10.1.17.2) replies saying “that name belongs to me”.
-The infected Windows client was DESKTOP-L8CGS5J (10.1.17.215 / 00:d0:b7:26:4a:74) in the BLUEMOONTUESDAY domain.
-<img width="1470" height="956" alt="image" src="https://github.com/user-attachments/assets/95126db7-73ac-449d-a25b-229bcde3f13c" />
-kRB5-NT-PRINCIPAL (1)
-name : shutchenson
-<img width="1470" height="768" alt="image" src="https://github.com/user-attachments/assets/10fb27d5-9692-42d7-9e60-9a288bf93ee7" />
-
-<img width="1470" height="956" alt="image" src="https://github.com/user-attachments/assets/e5517863-f95a-4637-b1a9-4e3b3582eef8" />
-
-
-
-
-
+---
